@@ -7,6 +7,7 @@
 #include <Adafruit_INA219.h>
 #include <WiFiManager.h>
 
+
 namespace {
 const char *kFirmwareVersion = "1.0.0";
 const char *kPrefsNamespace = "batmon";
@@ -161,6 +162,7 @@ bool discoverServer(IPAddress &serverIp, uint16_t &serverPort) {
       return true;
     }
   }
+
   udp.stop();
   return false;
 }
