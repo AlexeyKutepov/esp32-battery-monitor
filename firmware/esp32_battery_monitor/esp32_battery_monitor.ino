@@ -6,7 +6,7 @@
 #include <Wire.h>
 #include <Adafruit_INA219.h>
 #include <WiFiManager.h>
-#include <ESPmDNS.h>
+
 
 namespace {
 const char *kFirmwareVersion = "1.0.0";
@@ -158,16 +158,6 @@ bool discoverServer(IPAddress &serverIp, uint16_t &serverPort) {
 
       serverIp = udp.remoteIP();
       serverPort = response["http_port"] | kServerHttpPort;
-      udp.stop();
-      return true;
-    }
-  }
-
-  if (MDNS.begin(deviceId.c_str())) {
-    int found = MDNS.queryService("battery-monitor", "tcp");
-    if (found > 0) {
-      serverIp = MDNS.IP(0);
-      serverPort = MDNS.port(0);
       udp.stop();
       return true;
     }
