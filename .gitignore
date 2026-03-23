@@ -1,0 +1,4 @@
+server/.venv/
+server/data/*.db
+__pycache__/
+*.pyc

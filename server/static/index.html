@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ESP32 Battery Monitor</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Локальный мониторинг аккумуляторов</p>
+          <h1>ESP32 Battery Monitor</h1>
+          <p class="subtitle">
+            Список всех устройств, которые сами находят сервер в локальной сети,
+            отправляют напряжение и засыпают до следующего цикла.
+          </p>
+        </div>
+        <div class="meta-card">
+          <div>
+            <span>Статус сервера</span>
+            <strong id="serverStatus">Проверка...</strong>
+          </div>
+          <div>
+            <span>Последнее обновление</span>
+            <strong id="lastRefresh">—</strong>
+          </div>
+        </div>
+      </header>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>Устройства</h2>
+            <p>Новые ESP32 автоматически появятся здесь после первой отправки данных.</p>
+          </div>
+          <button id="refreshButton" class="button secondary">Обновить</button>
+        </div>
+        <div id="deviceGrid" class="device-grid"></div>
+        <template id="deviceCardTemplate">
+          <article class="device-card">
+            <div class="device-card-top">
+              <div>
+                <h3 class="device-name"></h3>
+                <p class="device-id"></p>
+              </div>
+              <span class="voltage-badge"></span>
+            </div>
+            <dl class="device-stats">
+              <div><dt>Последний сеанс</dt><dd class="last-seen"></dd></div>
+              <div><dt>IP</dt><dd class="ip-address"></dd></div>
+              <div><dt>RSSI</dt><dd class="wifi-rssi"></dd></div>
+              <div><dt>Прошивка</dt><dd class="firmware"></dd></div>
+              <div><dt>Пробуждений</dt><dd class="boot-count"></dd></div>
+            </dl>
+            <form class="rename-form">
+              <label>
+                Новое имя
+                <input name="device_name" type="text" maxlength="64" required />
+              </label>
+              <button type="submit" class="button primary">Сохранить</button>
+            </form>
+            <p class="hint">
+              Новое имя сохранится на сервере и применится на устройстве при следующем пробуждении.
+            </p>
+            <p class="message"></p>
+          </article>
+        </template>
+      </section>
+    </main>
+
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>
