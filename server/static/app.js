@@ -1,8 +1,13 @@
+const LOW_VOLTAGE_DEFAULT = 11;
+
 const deviceGrid = document.getElementById('deviceGrid');
 const template = document.getElementById('deviceCardTemplate');
 const refreshButton = document.getElementById('refreshButton');
 const serverStatus = document.getElementById('serverStatus');
 const lastRefresh = document.getElementById('lastRefresh');
+const lowVoltageThreshold = document.getElementById('lowVoltageThreshold');
+
+let currentLowVoltageThreshold = LOW_VOLTAGE_DEFAULT;
 
 function formatDate(value) {
   if (!value) {
@@ -18,19 +23,89 @@ function setMessage(element, text, isError = false) {
   element.className = `message ${isError ? 'error' : 'success'}`;
 }
 
-async function renameDevice(deviceId, deviceName, messageElement) {
+async function saveDeviceSettings(deviceId, settingsPayload, messageElement) {
   const response = await fetch(`/api/devices/${encodeURIComponent(deviceId)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ device_name: deviceName }),
+    body: JSON.stringify(settingsPayload),
   });
 
   const payload = await response.json();
   if (!response.ok) {
-    throw new Error(payload.description || payload.message || 'Не удалось сохранить имя');
+    throw new Error(payload.description || payload.message || 'Не удалось сохранить настройки');
   }
 
-  setMessage(messageElement, 'Имя сохранено. Устройство применит его при следующем пробуждении.');
+  setMessage(messageElement, 'Настройки сохранены. ESP32 применит их при следующем пробуждении.');
+}
+
+function drawDischargeChart(canvas, measurements) {
+  const ctx = canvas.getContext('2d');
+  const width = canvas.width;
+  const height = canvas.height;
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = '#0d1830';
+  ctx.fillRect(0, 0, width, height);
+
+  if (!measurements.length) {
+    ctx.fillStyle = '#a7b9d7';
+    ctx.font = '14px Inter, Arial, sans-serif';
+    ctx.fillText('Пока нет данных для графика', 16, 28);
+    return;
+  }
+
+  const values = measurements.map((m) => Number(m.voltage));
+  const minV = Math.min(...values) - 0.05;
+  const maxV = Math.max(...values) + 0.05;
+  const range = Math.max(0.1, maxV - minV);
+  const left = 40;
+  const right = width - 16;
+  const top = 16;
+  const bottom = height - 30;
+
+  ctx.strokeStyle = 'rgba(167, 185, 215, 0.35)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(left, top);
+  ctx.lineTo(left, bottom);
+  ctx.lineTo(right, bottom);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#61b3ff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+
+  values.forEach((value, idx) => {
+    const x = left + ((right - left) * idx) / Math.max(1, values.length - 1);
+    const y = bottom - ((value - minV) / range) * (bottom - top);
+    if (idx === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  });
+  ctx.stroke();
+
+  ctx.fillStyle = '#a7b9d7';
+  ctx.font = '12px Inter, Arial, sans-serif';
+  ctx.fillText(`${maxV.toFixed(2)} V`, 4, top + 4);
+  ctx.fillText(`${minV.toFixed(2)} V`, 4, bottom + 4);
+  ctx.fillText(formatDate(measurements[0].seen_at), left, height - 8);
+  const endLabel = formatDate(measurements[measurements.length - 1].seen_at);
+  const textWidth = ctx.measureText(endLabel).width;
+  ctx.fillText(endLabel, right - textWidth, height - 8);
+}
+
+async function loadChartForDevice(deviceId, canvas, messageElement) {
+  const response = await fetch(`/api/devices/${encodeURIComponent(deviceId)}/measurements?limit=250`);
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.description || payload.message || 'Не удалось загрузить график');
+  }
+
+  drawDischargeChart(canvas, payload.measurements || []);
+  messageElement.textContent = `Точек на графике: ${(payload.measurements || []).length}`;
+  messageElement.className = 'message';
 }
 
 function buildDeviceCard(device) {
@@ -44,9 +119,13 @@ function buildDeviceCard(device) {
   const wifiRssi = fragment.querySelector('.wifi-rssi');
   const firmware = fragment.querySelector('.firmware');
   const bootCount = fragment.querySelector('.boot-count');
-  const form = fragment.querySelector('.rename-form');
-  const input = form.querySelector('input[name="device_name"]');
-  const message = fragment.querySelector('.message');
+  const settingsForm = fragment.querySelector('.settings-form');
+  const nameInput = settingsForm.querySelector('input[name="device_name"]');
+  const sleepInput = settingsForm.querySelector('input[name="sleep_seconds"]');
+  const settingsMessage = fragment.querySelector('.settings-message');
+  const chartPanel = fragment.querySelector('.chart-accordion');
+  const chartCanvas = fragment.querySelector('.discharge-chart');
+  const chartMessage = fragment.querySelector('.chart-message');
 
   nameElement.textContent = device.display_name;
   idElement.textContent = device.device_id;
@@ -56,18 +135,41 @@ function buildDeviceCard(device) {
   wifiRssi.textContent = device.wifi_rssi ?? '—';
   firmware.textContent = device.firmware_version || '—';
   bootCount.textContent = device.boot_count ?? '—';
-  input.value = device.display_name;
-  root.dataset.deviceId = device.device_id;
+  nameInput.value = device.display_name;
+  sleepInput.value = Number(device.desired_sleep_seconds ?? 300);
 
-  form.addEventListener('submit', async (event) => {
+  const isLowVoltage = Boolean(device.is_low_voltage) || Number(device.last_voltage ?? 99) < currentLowVoltageThreshold;
+  if (isLowVoltage) {
+    root.classList.add('low-voltage');
+    voltageBadge.classList.add('low');
+  }
+
+  settingsForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    message.textContent = '';
+    settingsMessage.textContent = '';
+
+    const payload = {
+      device_name: nameInput.value.trim(),
+      sleep_seconds: Number(sleepInput.value),
+    };
 
     try {
-      await renameDevice(device.device_id, input.value.trim(), message);
+      await saveDeviceSettings(device.device_id, payload, settingsMessage);
       await loadDevices();
     } catch (error) {
-      setMessage(message, error.message || 'Ошибка при сохранении', true);
+      setMessage(settingsMessage, error.message || 'Ошибка при сохранении', true);
+    }
+  });
+
+  chartPanel.addEventListener('toggle', async () => {
+    if (!chartPanel.open || chartPanel.dataset.loaded === 'true') {
+      return;
+    }
+    try {
+      await loadChartForDevice(device.device_id, chartCanvas, chartMessage);
+      chartPanel.dataset.loaded = 'true';
+    } catch (error) {
+      setMessage(chartMessage, error.message || 'Ошибка загрузки графика', true);
     }
   });
 
@@ -78,8 +180,11 @@ async function loadDevices() {
   const response = await fetch('/api/devices');
   const payload = await response.json();
   if (!response.ok) {
-    throw new Error(payload.description || 'Ошибка при загрузке списка устройств');
+    throw new Error(payload.description || payload.message || 'Ошибка при загрузке списка устройств');
   }
+
+  currentLowVoltageThreshold = Number(payload.low_voltage_threshold ?? LOW_VOLTAGE_DEFAULT);
+  lowVoltageThreshold.textContent = `${currentLowVoltageThreshold.toFixed(1)} V`;
 
   deviceGrid.innerHTML = '';
   if (!payload.devices.length) {

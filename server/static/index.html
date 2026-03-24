@@ -23,6 +23,10 @@
             <strong id="serverStatus">Проверка...</strong>
           </div>
           <div>
+            <span>Порог низкого напряжения</span>
+            <strong id="lowVoltageThreshold">—</strong>
+          </div>
+          <div>
             <span>Последнее обновление</span>
             <strong id="lastRefresh">—</strong>
           </div>
@@ -54,17 +58,33 @@
               <div><dt>Прошивка</dt><dd class="firmware"></dd></div>
               <div><dt>Пробуждений</dt><dd class="boot-count"></dd></div>
             </dl>
-            <form class="rename-form">
-              <label>
-                Новое имя
-                <input name="device_name" type="text" maxlength="64" required />
-              </label>
-              <button type="submit" class="button primary">Сохранить</button>
-            </form>
-            <p class="hint">
-              Новое имя сохранится на сервере и применится на устройстве при следующем пробуждении.
-            </p>
-            <p class="message"></p>
+
+            <details class="accordion settings-accordion">
+              <summary>Настройки аккумулятора</summary>
+              <form class="settings-form">
+                <label>
+                  Новое имя
+                  <input name="device_name" type="text" maxlength="64" required />
+                </label>
+                <label>
+                  Время сна (сек.)
+                  <input name="sleep_seconds" type="number" min="30" max="86400" step="1" required />
+                </label>
+                <button type="submit" class="button primary">Сохранить настройки</button>
+              </form>
+              <p class="hint">
+                Изменения отправляются на сервер и применяются на ESP32 при следующем пробуждении.
+              </p>
+              <p class="message settings-message"></p>
+            </details>
+
+            <details class="accordion chart-accordion">
+              <summary>График разряда аккумулятора</summary>
+              <div class="chart-wrapper">
+                <canvas class="discharge-chart" width="640" height="220"></canvas>
+              </div>
+              <p class="message chart-message"></p>
+            </details>
           </article>
         </template>
       </section>

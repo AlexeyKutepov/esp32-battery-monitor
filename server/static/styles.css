@@ -10,6 +10,7 @@
   --success: #31d0aa;
   --warning: #ffb454;
   --danger: #ff7878;
+  --danger-bg: rgba(255, 120, 120, 0.12);
   --shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
 }
 
@@ -99,11 +100,16 @@ body {
 .device-grid {
   display: grid;
   gap: 18px;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
 }
 
 .device-card {
   padding: 20px;
+}
+
+.device-card.low-voltage {
+  border-color: rgba(255, 120, 120, 0.6);
+  box-shadow: 0 10px 30px rgba(255, 80, 80, 0.2);
 }
 
 .device-card-top {
@@ -125,6 +131,11 @@ body {
   background: rgba(97, 179, 255, 0.12);
   color: var(--primary);
   font-weight: 700;
+}
+
+.voltage-badge.low {
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 
 .device-stats {
@@ -150,15 +161,36 @@ body {
   font-weight: 600;
 }
 
-.rename-form {
-  display: flex;
-  gap: 12px;
-  align-items: flex-end;
-  flex-wrap: wrap;
+.accordion {
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  margin-top: 14px;
+  overflow: hidden;
 }
 
-.rename-form label {
-  flex: 1 1 180px;
+.accordion summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 14px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.accordion summary::-webkit-details-marker {
+  display: none;
+}
+
+.accordion[open] summary {
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.settings-form {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.settings-form label {
   display: grid;
   gap: 8px;
   font-size: 0.92rem;
@@ -199,9 +231,15 @@ input {
   border: 1px solid var(--panel-border);
 }
 
+.hint {
+  margin: 0;
+  padding: 0 14px 12px;
+}
+
 .message {
   min-height: 1.2em;
-  margin-top: 12px;
+  margin: 0;
+  padding: 0 14px 12px;
 }
 
 .message.success {
@@ -210,6 +248,18 @@ input {
 
 .message.error {
   color: var(--danger);
+}
+
+.chart-wrapper {
+  padding: 14px;
+}
+
+.discharge-chart {
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.18);
 }
 
 .empty-state {
