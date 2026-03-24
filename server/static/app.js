@@ -108,7 +108,7 @@ async function loadChartForDevice(deviceId, canvas, messageElement) {
   messageElement.className = 'message';
 }
 
-function buildDeviceCard(device, expandedState) {
+function buildDeviceCard(device, expandedState, pendingEdit = null) {
   const fragment = template.content.cloneNode(true);
   const root = fragment.querySelector('.device-card');
   const devicePanel = fragment.querySelector('.device-accordion');
@@ -142,8 +142,24 @@ function buildDeviceCard(device, expandedState) {
   wifiRssi.textContent = device.wifi_rssi ?? '—';
   firmware.textContent = device.firmware_version || '—';
   bootCount.textContent = device.boot_count ?? '—';
-  nameInput.value = device.display_name;
-  sleepInput.value = Number(device.desired_sleep_seconds ?? 300);
+  const initialName = device.display_name;
+  const initialSleep = String(Number(device.desired_sleep_seconds ?? 300));
+
+  nameInput.value = pendingEdit?.device_name ?? initialName;
+  sleepInput.value = pendingEdit?.sleep_seconds ?? initialSleep;
+  nameInput.dataset.initialValue = initialName;
+  sleepInput.dataset.initialValue = initialSleep;
+  nameInput.dataset.dirty = 'false';
+  sleepInput.dataset.dirty = 'false';
+
+  const syncDirtyState = (input) => {
+    input.dataset.dirty = String(input.value !== (input.dataset.initialValue ?? ''));
+  };
+
+  syncDirtyState(nameInput);
+  syncDirtyState(sleepInput);
+  nameInput.addEventListener('input', () => syncDirtyState(nameInput));
+  sleepInput.addEventListener('input', () => syncDirtyState(sleepInput));
 
   const isLowVoltage = Boolean(device.is_low_voltage) || Number(device.last_voltage ?? 99) < currentLowVoltageThreshold;
   if (isLowVoltage) {
@@ -184,6 +200,30 @@ function buildDeviceCard(device, expandedState) {
 }
 
 async function loadDevices() {
+  const pendingEdits = new Map(
+    Array.from(deviceGrid.querySelectorAll('.device-card'))
+      .map((card) => {
+        const deviceId = card.dataset.deviceId;
+        const settingsForm = card.querySelector('.settings-form');
+        const nameInput = settingsForm?.querySelector('input[name="device_name"]');
+        const sleepInput = settingsForm?.querySelector('input[name="sleep_seconds"]');
+        if (!deviceId || !nameInput || !sleepInput) {
+          return null;
+        }
+
+        const isDirty = nameInput.dataset.dirty === 'true' || sleepInput.dataset.dirty === 'true';
+        if (!isDirty) {
+          return null;
+        }
+
+        return [deviceId, {
+          device_name: nameInput.value,
+          sleep_seconds: sleepInput.value,
+        }];
+      })
+      .filter(Boolean),
+  );
+
   const expandedDevices = new Set(
     Array.from(deviceGrid.querySelectorAll('.device-card .device-accordion[open]'))
       .map((panel) => panel.closest('.device-card')?.dataset.deviceId)
@@ -218,12 +258,16 @@ async function loadDevices() {
   if (!payload.devices.length) {
     deviceGrid.innerHTML = '<div class="empty-state">Устройства пока не зарегистрированы. После первой отправки данных ESP32 появится здесь автоматически.</div>';
   } else {
-    payload.devices.forEach((device) => deviceGrid.appendChild(buildDeviceCard(device, {
-      expandedDevices,
-      expandedSettings,
-      expandedCharts,
-      loadedCharts,
-    })));
+    payload.devices.forEach((device) => deviceGrid.appendChild(buildDeviceCard(
+      device,
+      {
+        expandedDevices,
+        expandedSettings,
+        expandedCharts,
+        loadedCharts,
+      },
+      pendingEdits.get(device.device_id),
+    )));
 
     if (expandedCharts.size) {
       const cards = Array.from(deviceGrid.querySelectorAll('.device-card'));
