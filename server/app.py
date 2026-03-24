@@ -5,7 +5,7 @@ import socket
 import sqlite3
 import threading
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +23,7 @@ DEFAULT_SLEEP_SECONDS = 300
 MIN_SLEEP_SECONDS = 30
 MAX_SLEEP_SECONDS = 86400
 LOW_VOLTAGE_THRESHOLD = 11.0
+OFFLINE_SLEEP_MULTIPLIER = 3
 
 app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="/static")
 
@@ -219,10 +220,27 @@ def list_devices() -> list[dict[str, Any]]:
         ).fetchall()
 
     devices: list[dict[str, Any]] = []
+    now = datetime.now(timezone.utc)
     for row in rows:
         device = dict(row)
         voltage = device.get("last_voltage")
+        sleep_seconds = int(device.get("desired_sleep_seconds") or DEFAULT_SLEEP_SECONDS)
+        deadline = sleep_seconds * OFFLINE_SLEEP_MULTIPLIER
+        last_seen_raw = device.get("last_seen")
+        is_offline = False
+
+        if last_seen_raw:
+            try:
+                last_seen_dt = datetime.fromisoformat(last_seen_raw)
+                if last_seen_dt.tzinfo is None:
+                    last_seen_dt = last_seen_dt.replace(tzinfo=timezone.utc)
+                is_offline = now - last_seen_dt > timedelta(seconds=deadline)
+            except ValueError:
+                is_offline = False
+
         device["is_low_voltage"] = voltage is not None and float(voltage) < LOW_VOLTAGE_THRESHOLD
+        device["is_offline"] = is_offline
+        device["status_text"] = "Нет связи с устройством" if is_offline else "Онлайн"
         devices.append(device)
     return devices
 

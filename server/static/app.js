@@ -116,6 +116,7 @@ function buildDeviceCard(device, expandedState) {
   const idElement = fragment.querySelector('.device-id');
   const voltageBadge = fragment.querySelector('.voltage-badge');
   const lastSeen = fragment.querySelector('.last-seen');
+  const deviceStatus = fragment.querySelector('.device-status');
   const ipAddress = fragment.querySelector('.ip-address');
   const wifiRssi = fragment.querySelector('.wifi-rssi');
   const firmware = fragment.querySelector('.firmware');
@@ -138,6 +139,7 @@ function buildDeviceCard(device, expandedState) {
   idElement.textContent = device.device_id;
   voltageBadge.textContent = `${Number(device.last_voltage ?? 0).toFixed(3)} V`;
   lastSeen.textContent = formatDate(device.last_seen);
+  deviceStatus.textContent = device.status_text || 'Онлайн';
   ipAddress.textContent = device.ip_address || '—';
   wifiRssi.textContent = device.wifi_rssi ?? '—';
   firmware.textContent = device.firmware_version || '—';
@@ -149,6 +151,11 @@ function buildDeviceCard(device, expandedState) {
   if (isLowVoltage) {
     root.classList.add('low-voltage');
     voltageBadge.classList.add('low');
+  }
+
+  if (device.is_offline) {
+    root.classList.add('offline');
+    deviceStatus.classList.add('offline');
   }
 
   settingsForm.addEventListener('submit', async (event) => {
