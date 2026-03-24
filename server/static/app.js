@@ -108,9 +108,10 @@ async function loadChartForDevice(deviceId, canvas, messageElement) {
   messageElement.className = 'message';
 }
 
-function buildDeviceCard(device) {
+function buildDeviceCard(device, expandedState) {
   const fragment = template.content.cloneNode(true);
   const root = fragment.querySelector('.device-card');
+  const devicePanel = fragment.querySelector('.device-accordion');
   const nameElement = fragment.querySelector('.device-name');
   const idElement = fragment.querySelector('.device-id');
   const voltageBadge = fragment.querySelector('.voltage-badge');
@@ -127,6 +128,11 @@ function buildDeviceCard(device) {
   const chartCanvas = fragment.querySelector('.discharge-chart');
   const chartMessage = fragment.querySelector('.chart-message');
   root.dataset.deviceId = device.device_id;
+
+  devicePanel.open = expandedState.expandedDevices.has(device.device_id);
+  settingsForm.closest('.settings-accordion').open = expandedState.expandedSettings.has(device.device_id);
+  chartPanel.open = expandedState.expandedCharts.has(device.device_id);
+  chartPanel.dataset.loaded = expandedState.loadedCharts.has(device.device_id) ? 'true' : 'false';
 
   nameElement.textContent = device.display_name;
   idElement.textContent = device.device_id;
@@ -178,8 +184,23 @@ function buildDeviceCard(device) {
 }
 
 async function loadDevices() {
+  const expandedDevices = new Set(
+    Array.from(deviceGrid.querySelectorAll('.device-card .device-accordion[open]'))
+      .map((panel) => panel.closest('.device-card')?.dataset.deviceId)
+      .filter(Boolean),
+  );
+  const expandedSettings = new Set(
+    Array.from(deviceGrid.querySelectorAll('.device-card .settings-accordion[open]'))
+      .map((panel) => panel.closest('.device-card')?.dataset.deviceId)
+      .filter(Boolean),
+  );
   const expandedCharts = new Set(
     Array.from(deviceGrid.querySelectorAll('.device-card .chart-accordion[open]'))
+      .map((panel) => panel.closest('.device-card')?.dataset.deviceId)
+      .filter(Boolean),
+  );
+  const loadedCharts = new Set(
+    Array.from(deviceGrid.querySelectorAll('.device-card .chart-accordion[data-loaded="true"]'))
       .map((panel) => panel.closest('.device-card')?.dataset.deviceId)
       .filter(Boolean),
   );
@@ -197,7 +218,12 @@ async function loadDevices() {
   if (!payload.devices.length) {
     deviceGrid.innerHTML = '<div class="empty-state">Устройства пока не зарегистрированы. После первой отправки данных ESP32 появится здесь автоматически.</div>';
   } else {
-    payload.devices.forEach((device) => deviceGrid.appendChild(buildDeviceCard(device)));
+    payload.devices.forEach((device) => deviceGrid.appendChild(buildDeviceCard(device, {
+      expandedDevices,
+      expandedSettings,
+      expandedCharts,
+      loadedCharts,
+    })));
 
     if (expandedCharts.size) {
       const cards = Array.from(deviceGrid.querySelectorAll('.device-card'));
