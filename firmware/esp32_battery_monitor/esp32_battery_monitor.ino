@@ -7,23 +7,28 @@
 #include <Adafruit_INA219.h>
 #include <WiFiManager.h>
 
-
 namespace {
-const char *kFirmwareVersion = "1.0.0";
+const char *kFirmwareVersion = "1.1.0";
 const char *kPrefsNamespace = "batmon";
 const char *kDeviceIdKey = "device_id";
 const char *kDeviceNameKey = "device_name";
 const char *kBootCountKey = "boot_count";
+const char *kSleepSecondsKey = "sleep_sec";
 
 const uint16_t kServerUdpPort = 4210;
 const uint16_t kServerHttpPort = 8080;
-const uint64_t kSleepSeconds = 300;
+const uint64_t kDefaultSleepSeconds = 300;
+const uint64_t kMinSleepSeconds = 30;
+const uint64_t kMaxSleepSeconds = 86400;
 const uint32_t kDiscoveryTimeoutMs = 2500;
 const uint32_t kProvisionPortalTimeoutSeconds = 180;
 const uint32_t kHttpTimeoutMs = 7000;
 const uint8_t kMaxDiscoveryAttempts = 3;
 const uint8_t kI2cSdaPin = 21;
 const uint8_t kI2cSclPin = 22;
+const uint8_t kGreenLedPin = 18;
+const uint8_t kRedLedPin = 19;
+const uint32_t kLedHoldMs = 5000;
 
 Preferences prefs;
 Adafruit_INA219 ina219;
@@ -32,6 +37,7 @@ RTC_DATA_ATTR uint32_t rtcBootCounter = 0;
 String deviceId;
 String deviceName;
 uint32_t bootCount = 0;
+uint64_t sleepSeconds = kDefaultSleepSeconds;
 
 String makeDefaultDeviceName(const String &id) {
   String suffix = id;
@@ -48,6 +54,29 @@ String makeDeviceId() {
   return String(buffer);
 }
 
+void setLedState(bool greenOn, bool redOn) {
+  digitalWrite(kGreenLedPin, greenOn ? HIGH : LOW);
+  digitalWrite(kRedLedPin, redOn ? HIGH : LOW);
+}
+
+void initLeds() {
+  pinMode(kGreenLedPin, OUTPUT);
+  pinMode(kRedLedPin, OUTPUT);
+  setLedState(false, false);
+}
+
+void signalSuccess() {
+  setLedState(true, false);
+  delay(kLedHoldMs);
+  setLedState(false, false);
+}
+
+void signalError() {
+  setLedState(false, true);
+  delay(kLedHoldMs);
+  setLedState(false, false);
+}
+
 void loadConfig() {
   prefs.begin(kPrefsNamespace, false);
   deviceId = prefs.getString(kDeviceIdKey, "");
@@ -62,6 +91,13 @@ void loadConfig() {
     prefs.putString(kDeviceNameKey, deviceName);
   }
 
+  uint32_t storedSleep = prefs.getUInt(kSleepSecondsKey, static_cast<uint32_t>(kDefaultSleepSeconds));
+  sleepSeconds = storedSleep;
+  if (sleepSeconds < kMinSleepSeconds || sleepSeconds > kMaxSleepSeconds) {
+    sleepSeconds = kDefaultSleepSeconds;
+    prefs.putUInt(kSleepSecondsKey, static_cast<uint32_t>(sleepSeconds));
+  }
+
   bootCount = prefs.getUInt(kBootCountKey, 0) + 1;
   prefs.putUInt(kBootCountKey, bootCount);
 }
@@ -73,6 +109,15 @@ void saveDeviceName(const String &newName) {
 
   deviceName = newName;
   prefs.putString(kDeviceNameKey, deviceName);
+}
+
+void saveSleepSeconds(uint64_t newSleepSeconds) {
+  if (newSleepSeconds < kMinSleepSeconds || newSleepSeconds > kMaxSleepSeconds || newSleepSeconds == sleepSeconds) {
+    return;
+  }
+
+  sleepSeconds = newSleepSeconds;
+  prefs.putUInt(kSleepSecondsKey, static_cast<uint32_t>(sleepSeconds));
 }
 
 bool ensureWifi() {
@@ -208,16 +253,25 @@ bool postMeasurement(const IPAddress &serverIp, uint16_t serverPort, float volta
     if (strlen(assignedName) > 0) {
       saveDeviceName(String(assignedName));
     }
+
+    uint64_t assignedSleepSeconds = responseJson["sleep_seconds"] | sleepSeconds;
+    saveSleepSeconds(assignedSleepSeconds);
   }
 
   return true;
 }
 
 void goToSleep() {
-  Serial.printf("Entering deep sleep for %llu seconds\n", kSleepSeconds);
+  Serial.printf("Entering deep sleep for %llu seconds\n", sleepSeconds);
   prefs.end();
-  esp_sleep_enable_timer_wakeup(kSleepSeconds * 1000000ULL);
+  esp_sleep_enable_timer_wakeup(sleepSeconds * 1000000ULL);
   esp_deep_sleep_start();
+}
+
+void failAndSleep(const char *message) {
+  Serial.println(message);
+  signalError();
+  goToSleep();
 }
 }  // namespace
 
@@ -225,30 +279,35 @@ void setup() {
   Serial.begin(115200);
   delay(500);
   ++rtcBootCounter;
+  initLeds();
+
   Serial.printf("Wake cycle #%lu\n", static_cast<unsigned long>(rtcBootCounter));
 
   loadConfig();
 
   if (!initIna219()) {
-    goToSleep();
+    failAndSleep("INA219 initialization failed");
   }
 
   float voltage = readBatteryVoltage();
   Serial.printf("Measured voltage: %.3f V\n", voltage);
 
   if (!ensureWifi()) {
-    goToSleep();
+    failAndSleep("WiFi connection failed");
   }
 
   IPAddress serverIp;
   uint16_t serverPort = kServerHttpPort;
   if (!discoverServer(serverIp, serverPort)) {
-    Serial.println("Server discovery failed");
-    goToSleep();
+    failAndSleep("Server discovery failed");
   }
 
   Serial.printf("Discovered server: %s:%u\n", serverIp.toString().c_str(), serverPort);
-  postMeasurement(serverIp, serverPort, voltage);
+  if (!postMeasurement(serverIp, serverPort, voltage)) {
+    failAndSleep("Measurement upload failed");
+  }
+
+  signalSuccess();
   goToSleep();
 }
 
