@@ -126,6 +126,7 @@ function buildDeviceCard(device) {
   const chartPanel = fragment.querySelector('.chart-accordion');
   const chartCanvas = fragment.querySelector('.discharge-chart');
   const chartMessage = fragment.querySelector('.chart-message');
+  root.dataset.deviceId = device.device_id;
 
   nameElement.textContent = device.display_name;
   idElement.textContent = device.device_id;
@@ -177,6 +178,12 @@ function buildDeviceCard(device) {
 }
 
 async function loadDevices() {
+  const expandedCharts = new Set(
+    Array.from(deviceGrid.querySelectorAll('.device-card .chart-accordion[open]'))
+      .map((panel) => panel.closest('.device-card')?.dataset.deviceId)
+      .filter(Boolean),
+  );
+
   const response = await fetch('/api/devices');
   const payload = await response.json();
   if (!response.ok) {
@@ -191,6 +198,30 @@ async function loadDevices() {
     deviceGrid.innerHTML = '<div class="empty-state">Устройства пока не зарегистрированы. После первой отправки данных ESP32 появится здесь автоматически.</div>';
   } else {
     payload.devices.forEach((device) => deviceGrid.appendChild(buildDeviceCard(device)));
+
+    if (expandedCharts.size) {
+      const cards = Array.from(deviceGrid.querySelectorAll('.device-card'));
+      await Promise.all(
+        cards
+          .filter((card) => expandedCharts.has(card.dataset.deviceId))
+          .map(async (card) => {
+            const chartPanel = card.querySelector('.chart-accordion');
+            const chartCanvas = card.querySelector('.discharge-chart');
+            const chartMessage = card.querySelector('.chart-message');
+            if (!chartPanel || !chartCanvas || !chartMessage) {
+              return;
+            }
+
+            chartPanel.open = true;
+            try {
+              await loadChartForDevice(card.dataset.deviceId, chartCanvas, chartMessage);
+              chartPanel.dataset.loaded = 'true';
+            } catch (error) {
+              setMessage(chartMessage, error.message || 'Ошибка загрузки графика', true);
+            }
+          }),
+      );
+    }
   }
 
   serverStatus.textContent = 'Онлайн';
