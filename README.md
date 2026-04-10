@@ -26,6 +26,7 @@
 Скетч находится в файле:
 
 - `firmware/esp32_battery_monitor/esp32_battery_monitor.ino`
+- `firmware/wt32_battery_monitor/wt32_battery_monitor.ino` (версия для WT32-ETH01 c Ethernet)
 
 Основной цикл работы:
 
@@ -43,6 +44,13 @@
 8. ESP32 делает `POST /api/devices/report` на сервер.
 9. Сервер может вернуть `assigned_name`, если устройство было переименовано в веб-интерфейсе.
 10. ESP32 сохраняет имя и уходит в deep sleep.
+
+Для WT32-ETH01 шаг подключения отличается:
+
+5. Поднимается Ethernet (LAN8720 + DHCP) вместо Wi‑Fi.
+6. Сервер находится через тот же UDP broadcast discovery на порту `4210`.
+7. Данные отправляются в `POST /api/devices/report`.
+8. Устройство уходит в deep sleep.
 
 ### 2. Сервер
 
@@ -157,6 +165,31 @@
 const uint8_t kI2cSdaPin = 21;
 const uint8_t kI2cSclPin = 22;
 ```
+
+## Версия скетча для WT32-ETH01 (Ethernet)
+
+Добавлен отдельный скетч:
+
+- `firmware/wt32_battery_monitor/wt32_battery_monitor.ino`
+
+Что в нём изменено:
+
+- подключение к сети через `ETH.h` (LAN8720), без Wi‑Fi Manager;
+- автообнаружение сервера в локальной сети остаётся через UDP broadcast (`4210`);
+- отправка телеметрии остаётся на `POST /api/devices/report`.
+
+Пины Ethernet в скетче (типовая конфигурация WT32-ETH01):
+
+- PHY addr: `1`
+- Power pin: `16`
+- MDC: `23`
+- MDIO: `18`
+- Clock mode: `ETH_CLOCK_GPIO0_IN`
+
+Пины INA219 по умолчанию в WT32-версии:
+
+- `SDA` → `GPIO33`
+- `SCL` → `GPIO32`
 
 ---
 
