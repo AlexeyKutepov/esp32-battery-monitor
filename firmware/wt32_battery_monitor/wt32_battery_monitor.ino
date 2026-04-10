@@ -23,6 +23,7 @@ const uint32_t kDiscoveryTimeoutMs = 2500;
 const uint32_t kEthConnectTimeoutMs = 20000;
 const uint32_t kHttpTimeoutMs = 7000;
 const uint8_t kMaxDiscoveryAttempts = 3;
+const uint32_t kLedHoldMs = 5000;
 
 // WT32-ETH01 + LAN8720
 const int kEthPhyAddr = 1;
@@ -35,6 +36,10 @@ const eth_clock_mode_t kEthClockMode = ETH_CLOCK_GPIO0_IN;
 // На WT32-ETH01 свободные пины ограничены. Выбраны безопасные для I2C.
 const uint8_t kI2cSdaPin = 33;
 const uint8_t kI2cSclPin = 32;
+// Индикация: подключите внешние светодиоды через резисторы к GND.
+// При необходимости поменяйте пины на свои.
+const uint8_t kGreenLedPin = 4;
+const uint8_t kRedLedPin = 2;
 
 Preferences prefs;
 Adafruit_INA219 ina219;
@@ -58,6 +63,29 @@ String makeDeviceId() {
            static_cast<uint16_t>(efuseMac >> 32),
            static_cast<uint32_t>(efuseMac));
   return String(buffer);
+}
+
+void setLedState(bool greenOn, bool redOn) {
+  digitalWrite(kGreenLedPin, greenOn ? HIGH : LOW);
+  digitalWrite(kRedLedPin, redOn ? HIGH : LOW);
+}
+
+void initLeds() {
+  pinMode(kGreenLedPin, OUTPUT);
+  pinMode(kRedLedPin, OUTPUT);
+  setLedState(false, false);
+}
+
+void signalSuccess() {
+  setLedState(true, false);
+  delay(kLedHoldMs);
+  setLedState(false, false);
+}
+
+void signalError() {
+  setLedState(false, true);
+  delay(kLedHoldMs);
+  setLedState(false, false);
 }
 
 void loadConfig() {
@@ -255,6 +283,7 @@ void goToSleep() {
 
 void failAndSleep(const char *message) {
   Serial.println(message);
+  signalError();
   goToSleep();
 }
 }  // namespace
@@ -263,6 +292,7 @@ void setup() {
   Serial.begin(115200);
   delay(500);
   ++rtcBootCounter;
+  initLeds();
 
   Serial.printf("Wake cycle #%lu\n", static_cast<unsigned long>(rtcBootCounter));
 
@@ -290,6 +320,7 @@ void setup() {
     failAndSleep("Measurement upload failed");
   }
 
+  signalSuccess();
   goToSleep();
 }
 
