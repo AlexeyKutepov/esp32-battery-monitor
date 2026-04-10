@@ -105,7 +105,7 @@ void saveSleepSeconds(uint64_t newSleepSeconds) {
 
 bool ensureEthernet() {
   ETH.setHostname(deviceId.c_str());
-  if (!ETH.begin(kEthPhyAddr, kEthPowerPin, kEthMdcPin, kEthMdioPin, kEthPhyType, kEthClockMode)) {
+  if (!ETH.begin(kEthPhyType, kEthPhyAddr, kEthMdcPin, kEthMdioPin, kEthPowerPin, kEthClockMode)) {
     Serial.println("ETH begin failed");
     return false;
   }
