@@ -10,8 +10,7 @@ const lowVoltageThreshold = document.getElementById('lowVoltageThreshold');
 let currentLowVoltageThreshold = LOW_VOLTAGE_DEFAULT;
 
 function buildDeviceRenderKey(device, index) {
-  const lastSeen = device.last_seen || 'no-last-seen';
-  return `${device.device_id}::${lastSeen}::${index}`;
+  return device.device_id || `device-${index}`;
 }
 
 function formatDate(value) {
