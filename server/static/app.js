@@ -9,6 +9,11 @@ const lowVoltageThreshold = document.getElementById('lowVoltageThreshold');
 
 let currentLowVoltageThreshold = LOW_VOLTAGE_DEFAULT;
 
+function buildDeviceRenderKey(device, index) {
+  const lastSeen = device.last_seen || 'no-last-seen';
+  return `${device.device_id}::${lastSeen}::${index}`;
+}
+
 function formatDate(value) {
   if (!value) {
     return '—';
@@ -108,7 +113,7 @@ async function loadChartForDevice(deviceId, canvas, messageElement) {
   messageElement.className = 'message';
 }
 
-function buildDeviceCard(device, expandedState, pendingEdit = null) {
+function buildDeviceCard(device, renderKey, expandedState, pendingEdit = null) {
   const fragment = template.content.cloneNode(true);
   const root = fragment.querySelector('.device-card');
   const devicePanel = fragment.querySelector('.device-accordion');
@@ -129,11 +134,12 @@ function buildDeviceCard(device, expandedState, pendingEdit = null) {
   const chartCanvas = fragment.querySelector('.discharge-chart');
   const chartMessage = fragment.querySelector('.chart-message');
   root.dataset.deviceId = device.device_id;
+  root.dataset.renderKey = renderKey;
 
-  devicePanel.open = expandedState.expandedDevices.has(device.device_id);
-  settingsForm.closest('.settings-accordion').open = expandedState.expandedSettings.has(device.device_id);
-  chartPanel.open = expandedState.expandedCharts.has(device.device_id);
-  chartPanel.dataset.loaded = expandedState.loadedCharts.has(device.device_id) ? 'true' : 'false';
+  devicePanel.open = expandedState.expandedDevices.has(renderKey);
+  settingsForm.closest('.settings-accordion').open = expandedState.expandedSettings.has(renderKey);
+  chartPanel.open = expandedState.expandedCharts.has(renderKey);
+  chartPanel.dataset.loaded = expandedState.loadedCharts.has(renderKey) ? 'true' : 'false';
 
   nameElement.textContent = device.display_name;
   idElement.textContent = device.device_id;
@@ -210,11 +216,11 @@ async function loadDevices() {
   const pendingEdits = new Map(
     Array.from(deviceGrid.querySelectorAll('.device-card'))
       .map((card) => {
-        const deviceId = card.dataset.deviceId;
+        const renderKey = card.dataset.renderKey;
         const settingsForm = card.querySelector('.settings-form');
         const nameInput = settingsForm?.querySelector('input[name="device_name"]');
         const sleepInput = settingsForm?.querySelector('input[name="sleep_seconds"]');
-        if (!deviceId || !nameInput || !sleepInput) {
+        if (!renderKey || !nameInput || !sleepInput) {
           return null;
         }
 
@@ -223,7 +229,7 @@ async function loadDevices() {
           return null;
         }
 
-        return [deviceId, {
+        return [renderKey, {
           device_name: nameInput.value,
           sleep_seconds: sleepInput.value,
         }];
@@ -233,22 +239,22 @@ async function loadDevices() {
 
   const expandedDevices = new Set(
     Array.from(deviceGrid.querySelectorAll('.device-card .device-accordion[open]'))
-      .map((panel) => panel.closest('.device-card')?.dataset.deviceId)
+      .map((panel) => panel.closest('.device-card')?.dataset.renderKey)
       .filter(Boolean),
   );
   const expandedSettings = new Set(
     Array.from(deviceGrid.querySelectorAll('.device-card .settings-accordion[open]'))
-      .map((panel) => panel.closest('.device-card')?.dataset.deviceId)
+      .map((panel) => panel.closest('.device-card')?.dataset.renderKey)
       .filter(Boolean),
   );
   const expandedCharts = new Set(
     Array.from(deviceGrid.querySelectorAll('.device-card .chart-accordion[open]'))
-      .map((panel) => panel.closest('.device-card')?.dataset.deviceId)
+      .map((panel) => panel.closest('.device-card')?.dataset.renderKey)
       .filter(Boolean),
   );
   const loadedCharts = new Set(
     Array.from(deviceGrid.querySelectorAll('.device-card .chart-accordion[data-loaded="true"]'))
-      .map((panel) => panel.closest('.device-card')?.dataset.deviceId)
+      .map((panel) => panel.closest('.device-card')?.dataset.renderKey)
       .filter(Boolean),
   );
 
@@ -265,22 +271,26 @@ async function loadDevices() {
   if (!payload.devices.length) {
     deviceGrid.innerHTML = '<div class="empty-state">Устройства пока не зарегистрированы. После первой отправки данных ESP32 появится здесь автоматически.</div>';
   } else {
-    payload.devices.forEach((device) => deviceGrid.appendChild(buildDeviceCard(
-      device,
-      {
-        expandedDevices,
-        expandedSettings,
-        expandedCharts,
-        loadedCharts,
-      },
-      pendingEdits.get(device.device_id),
-    )));
+    payload.devices.forEach((device, index) => {
+      const renderKey = buildDeviceRenderKey(device, index);
+      deviceGrid.appendChild(buildDeviceCard(
+        device,
+        renderKey,
+        {
+          expandedDevices,
+          expandedSettings,
+          expandedCharts,
+          loadedCharts,
+        },
+        pendingEdits.get(renderKey),
+      ));
+    });
 
     if (expandedCharts.size) {
       const cards = Array.from(deviceGrid.querySelectorAll('.device-card'));
       await Promise.all(
         cards
-          .filter((card) => expandedCharts.has(card.dataset.deviceId))
+          .filter((card) => expandedCharts.has(card.dataset.renderKey))
           .map(async (card) => {
             const chartPanel = card.querySelector('.chart-accordion');
             const chartCanvas = card.querySelector('.discharge-chart');
