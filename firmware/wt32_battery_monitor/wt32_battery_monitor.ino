@@ -7,7 +7,7 @@
 #include <Adafruit_INA219.h>
 
 namespace {
-const char *kFirmwareVersion = "1.1.0-wt32";
+const char *kFirmwareVersion = "1.1.2-wt32";
 const char *kPrefsNamespace = "batmon";
 const char *kDeviceIdKey = "device_id";
 const char *kDeviceNameKey = "device_name";
@@ -16,11 +16,13 @@ const char *kSleepSecondsKey = "sleep_sec";
 
 const uint16_t kServerUdpPort = 4210;
 const uint16_t kServerHttpPort = 8080;
-const uint64_t kDefaultSleepSeconds = 300;
+const uint64_t kDefaultSleepSeconds = 60;
 const uint64_t kMinSleepSeconds = 30;
 const uint64_t kMaxSleepSeconds = 86400;
 const uint32_t kDiscoveryTimeoutMs = 2500;
-const uint32_t kEthConnectTimeoutMs = 20000;
+const uint32_t kEthConnectTimeoutMs = 45000;
+const uint8_t kEthStartAttempts = 2;
+const uint32_t kEthRetryDelayMs = 1500;
 const uint32_t kHttpTimeoutMs = 7000;
 const uint8_t kMaxDiscoveryAttempts = 3;
 const uint32_t kLedHoldMs = 5000;
@@ -133,19 +135,36 @@ void saveSleepSeconds(uint64_t newSleepSeconds) {
 
 bool ensureEthernet() {
   ETH.setHostname(deviceId.c_str());
-  if (!ETH.begin(kEthPhyType, kEthPhyAddr, kEthMdcPin, kEthMdioPin, kEthPowerPin, kEthClockMode)) {
-    Serial.println("ETH begin failed");
-    return false;
-  }
 
-  unsigned long startedAt = millis();
-  while (millis() - startedAt < kEthConnectTimeoutMs) {
-    if (ETH.linkUp() && ETH.localIP() != INADDR_NONE) {
-      Serial.print("Connected to Ethernet with IP: ");
-      Serial.println(ETH.localIP());
-      return true;
+  for (uint8_t attempt = 1; attempt <= kEthStartAttempts; ++attempt) {
+    Serial.printf("Starting Ethernet (attempt %u/%u)\n", attempt, kEthStartAttempts);
+    if (!ETH.begin(kEthPhyType, kEthPhyAddr, kEthMdcPin, kEthMdioPin, kEthPowerPin, kEthClockMode)) {
+      Serial.println("ETH begin failed");
+      delay(kEthRetryDelayMs);
+      continue;
     }
-    delay(100);
+
+    bool linkSeen = false;
+    unsigned long startedAt = millis();
+    while (millis() - startedAt < kEthConnectTimeoutMs) {
+      if (ETH.linkUp()) {
+        linkSeen = true;
+        if (ETH.localIP() != INADDR_NONE) {
+          Serial.print("Connected to Ethernet with IP: ");
+          Serial.println(ETH.localIP());
+          return true;
+        }
+      }
+      delay(100);
+    }
+
+    if (linkSeen) {
+      Serial.println("DHCP timeout: link is up but no IP address assigned");
+    } else {
+      Serial.println("Ethernet link timeout: check cable or switch port");
+    }
+
+    delay(kEthRetryDelayMs);
   }
 
   Serial.println("Ethernet link or DHCP timeout");
